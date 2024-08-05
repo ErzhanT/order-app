@@ -1,0 +1,80 @@
+services:
+  kafka:
+    image: apache/kafka:3.8.0
+    container_name: "kafka-broker"
+    environment:
+      KAFKA_NUM_PARTITIONS: ${KAFKA_NUM_PARTITIONS}
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
+      KAFKA_ADVERTISED_LISTENERS: ${KAFKA_LISTENER_URL}
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@localhost:9093
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: ${KAFKA_REPLICAS_NUM}
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+    ports:
+      - ${KAFKA_PORT}:${KAFKA_PORT}
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+
+  producer-database:
+    image: postgres:14.8-alpine
+    container_name: "order-database"
+    restart: unless-stopped
+    volumes:
+      - order_db_data:/var/lib/postgresql/data
+    environment:
+      POSTGRES_HOST: ${DB_HOST}
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
+    ports:
+      - ${DB_PORT}:${DB_DEFAULT_PORT}
+
+  consumer-database:
+    image: postgres:14.8-alpine
+    container_name: "order-event-database"
+    restart: unless-stopped
+    volumes:
+      - order_event_db_data:/var/lib/postgresql/data
+    environment:
+      POSTGRES_HOST: ${DB_EVENT_HOST}
+      POSTGRES_USER: ${DB_EVENT_USER}
+      POSTGRES_PASSWORD: ${DB_EVENT_PASSWORD}
+      POSTGRES_DB: ${DB_EVENT_NAME}
+    ports:
+      - ${DB_EVENT_PORT}:${DB_DEFAULT_PORT}
+
+  order-producer:
+    container_name: "order-producer"
+    build: ./order-producer
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./order-producer:/usr/src/app
+      - /usr/src/app/node_modules
+    depends_on:
+      - kafka
+      - producer-database
+
+  order-consumer:
+    container_name: "order-consumer"
+    build: ./order-consumer
+    ports:
+      - "3010:3010"
+    volumes:
+      - ./order-consumer:/usr/src/app
+      - /usr/src/app/node_modules
+    depends_on:
+      - kafka
+      - consumer-database
+      - order-producer
+
+volumes:
+  order_db_data:
+  order_event_db_data:
+  kafka_data:
